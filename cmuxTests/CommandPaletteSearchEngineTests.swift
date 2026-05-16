@@ -596,6 +596,56 @@ final class CommandPaletteSearchEngineTests: XCTestCase {
         )
     }
 
+    func testForkableAgentCacheRequiresMatchingTTYWithoutFallbackSnapshot() {
+        let workspaceId = UUID()
+        let panelId = UUID()
+        let supportedKey = ContentView.commandPaletteForkableAgentPanelKey(
+            workspaceId: workspaceId,
+            panelId: panelId
+        )
+
+        XCTAssertTrue(
+            ContentView.commandPalettePanelHasForkableAgent(
+                workspaceId: workspaceId,
+                panelId: panelId,
+                supportedPanelKeys: [supportedKey],
+                supportedTTYNamesByPanelKey: [supportedKey: "ttys001"],
+                fallbackSnapshot: nil,
+                ttyName: "ttys001"
+            )
+        )
+        XCTAssertFalse(
+            ContentView.commandPalettePanelHasForkableAgent(
+                workspaceId: workspaceId,
+                panelId: panelId,
+                supportedPanelKeys: [supportedKey],
+                supportedTTYNamesByPanelKey: [supportedKey: "ttys001"],
+                fallbackSnapshot: nil,
+                ttyName: "ttys002"
+            )
+        )
+        XCTAssertFalse(
+            ContentView.commandPalettePanelHasForkableAgent(
+                workspaceId: workspaceId,
+                panelId: panelId,
+                supportedPanelKeys: [supportedKey],
+                supportedTTYNamesByPanelKey: [:],
+                fallbackSnapshot: nil,
+                ttyName: "ttys001"
+            )
+        )
+        XCTAssertTrue(
+            ContentView.commandPalettePanelHasForkableAgent(
+                workspaceId: workspaceId,
+                panelId: panelId,
+                supportedPanelKeys: [supportedKey],
+                supportedTTYNamesByPanelKey: [supportedKey: ""],
+                fallbackSnapshot: nil,
+                ttyName: nil
+            )
+        )
+    }
+
     func testForkPostProbeContextRejectsFocusOrRemoteContextChanges() {
         let workspaceId = UUID()
         let panelId = UUID()
@@ -605,10 +655,12 @@ final class CommandPaletteSearchEngineTests: XCTestCase {
                 expectedWorkspaceId: workspaceId,
                 expectedPanelId: panelId,
                 expectedIsRemoteContext: false,
+                expectedTTYName: "ttys001",
                 currentWorkspaceId: workspaceId,
                 currentPanelId: panelId,
                 currentPanelIsTerminal: true,
-                currentIsRemoteContext: false
+                currentIsRemoteContext: false,
+                currentTTYName: "ttys001"
             )
         )
         XCTAssertFalse(
@@ -616,10 +668,12 @@ final class CommandPaletteSearchEngineTests: XCTestCase {
                 expectedWorkspaceId: workspaceId,
                 expectedPanelId: panelId,
                 expectedIsRemoteContext: false,
+                expectedTTYName: "ttys001",
                 currentWorkspaceId: workspaceId,
                 currentPanelId: UUID(),
                 currentPanelIsTerminal: true,
-                currentIsRemoteContext: false
+                currentIsRemoteContext: false,
+                currentTTYName: "ttys001"
             )
         )
         XCTAssertFalse(
@@ -627,10 +681,12 @@ final class CommandPaletteSearchEngineTests: XCTestCase {
                 expectedWorkspaceId: workspaceId,
                 expectedPanelId: panelId,
                 expectedIsRemoteContext: false,
+                expectedTTYName: "ttys001",
                 currentWorkspaceId: UUID(),
                 currentPanelId: panelId,
                 currentPanelIsTerminal: true,
-                currentIsRemoteContext: false
+                currentIsRemoteContext: false,
+                currentTTYName: "ttys001"
             )
         )
         XCTAssertFalse(
@@ -638,10 +694,12 @@ final class CommandPaletteSearchEngineTests: XCTestCase {
                 expectedWorkspaceId: workspaceId,
                 expectedPanelId: panelId,
                 expectedIsRemoteContext: false,
+                expectedTTYName: "ttys001",
                 currentWorkspaceId: workspaceId,
                 currentPanelId: panelId,
                 currentPanelIsTerminal: false,
-                currentIsRemoteContext: false
+                currentIsRemoteContext: false,
+                currentTTYName: "ttys001"
             )
         )
         XCTAssertFalse(
@@ -649,10 +707,25 @@ final class CommandPaletteSearchEngineTests: XCTestCase {
                 expectedWorkspaceId: workspaceId,
                 expectedPanelId: panelId,
                 expectedIsRemoteContext: false,
+                expectedTTYName: "ttys001",
                 currentWorkspaceId: workspaceId,
                 currentPanelId: panelId,
                 currentPanelIsTerminal: true,
-                currentIsRemoteContext: true
+                currentIsRemoteContext: true,
+                currentTTYName: "ttys001"
+            )
+        )
+        XCTAssertFalse(
+            ContentView.commandPaletteForkPostProbeContextStillMatches(
+                expectedWorkspaceId: workspaceId,
+                expectedPanelId: panelId,
+                expectedIsRemoteContext: false,
+                expectedTTYName: "ttys001",
+                currentWorkspaceId: workspaceId,
+                currentPanelId: panelId,
+                currentPanelIsTerminal: true,
+                currentIsRemoteContext: false,
+                currentTTYName: "ttys002"
             )
         )
     }
@@ -1717,9 +1790,12 @@ final class CommandPaletteSearchEngineTests: XCTestCase {
                 "workspace.hasPullRequests": true,
                 "panel.hasUnread": false,
                 "panel.isTerminal": true,
+                "panel.isRemoteTerminal": false,
             ],
             stringValues: [
+                "workspace.id": "workspace-a",
                 "workspace.name": "Alpha",
+                "panel.id": "panel-a",
                 "panel.name": "Main",
             ]
         )
@@ -1728,9 +1804,12 @@ final class CommandPaletteSearchEngineTests: XCTestCase {
                 "workspace.hasPullRequests": true,
                 "panel.hasUnread": true,
                 "panel.isTerminal": true,
+                "panel.isRemoteTerminal": false,
             ],
             stringValues: [
+                "workspace.id": "workspace-a",
                 "workspace.name": "Alpha",
+                "panel.id": "panel-a",
                 "panel.name": "Main",
             ]
         )
@@ -1739,15 +1818,63 @@ final class CommandPaletteSearchEngineTests: XCTestCase {
                 "workspace.hasPullRequests": true,
                 "panel.hasUnread": false,
                 "panel.isTerminal": true,
+                "panel.isRemoteTerminal": false,
             ],
             stringValues: [
+                "workspace.id": "workspace-a",
                 "workspace.name": "Alpha",
+                "panel.id": "panel-a",
                 "panel.name": "Logs",
+            ]
+        )
+        let switchedPanel = ContentView.commandPaletteContextFingerprint(
+            boolValues: [
+                "workspace.hasPullRequests": true,
+                "panel.hasUnread": false,
+                "panel.isTerminal": true,
+                "panel.isRemoteTerminal": false,
+            ],
+            stringValues: [
+                "workspace.id": "workspace-a",
+                "workspace.name": "Alpha",
+                "panel.id": "panel-b",
+                "panel.name": "Main",
+            ]
+        )
+        let switchedWorkspace = ContentView.commandPaletteContextFingerprint(
+            boolValues: [
+                "workspace.hasPullRequests": true,
+                "panel.hasUnread": false,
+                "panel.isTerminal": true,
+                "panel.isRemoteTerminal": false,
+            ],
+            stringValues: [
+                "workspace.id": "workspace-b",
+                "workspace.name": "Alpha",
+                "panel.id": "panel-a",
+                "panel.name": "Main",
+            ]
+        )
+        let switchedRemoteContext = ContentView.commandPaletteContextFingerprint(
+            boolValues: [
+                "workspace.hasPullRequests": true,
+                "panel.hasUnread": false,
+                "panel.isTerminal": true,
+                "panel.isRemoteTerminal": true,
+            ],
+            stringValues: [
+                "workspace.id": "workspace-a",
+                "workspace.name": "Alpha",
+                "panel.id": "panel-a",
+                "panel.name": "Main",
             ]
         )
 
         XCTAssertNotEqual(base, unreadChanged)
         XCTAssertNotEqual(base, renamed)
+        XCTAssertNotEqual(base, switchedPanel)
+        XCTAssertNotEqual(base, switchedWorkspace)
+        XCTAssertNotEqual(base, switchedRemoteContext)
     }
 
     func testSwitcherFingerprintTracksMetadataValuesAtSameCardinality() {

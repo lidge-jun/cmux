@@ -31,30 +31,47 @@ extension ContentView {
 
         let workspaceId = initialContext.workspace.id
         let panelId = initialContext.panelId
+        let ttyName = Self.commandPaletteNormalizedTTYName(initialContext.workspace.surfaceTTYNames[panelId])
+        let ttyCacheValue = Self.commandPaletteTTYCacheValue(ttyName)
         let panelKey = Self.commandPaletteForkableAgentPanelKey(
             workspaceId: workspaceId,
             panelId: panelId
         )
 
         Task { @MainActor in
-            let index = await RestorableAgentSessionIndex.loadIncludingProcessDetectedSnapshots()
+            let index = await RestorableAgentSessionIndex.loadIncludingProcessDetectedSnapshots(
+                fallbackScope: RestorableAgentProcessDetectionScope(
+                    workspaceId: workspaceId,
+                    panelId: panelId,
+                    ttyName: ttyName
+                )
+            )
             guard let currentContext = focusedPanelContext,
                   currentContext.workspace.id == workspaceId,
                   currentContext.panelId == panelId,
-                  currentContext.panel.panelType == .terminal else {
+                  currentContext.panel.panelType == .terminal,
+                  Self.commandPaletteNormalizedTTYName(currentContext.workspace.surfaceTTYNames[panelId]) == ttyName else {
                 NSSound.beep()
                 return
+            }
+            let cachedSnapshot: SessionRestorableAgentSnapshot?
+            if commandPaletteForkableAgentTTYNamesByPanelKey[panelKey] == ttyCacheValue {
+                cachedSnapshot = commandPaletteForkableAgentSnapshotsByPanelKey[panelKey]
+            } else {
+                cachedSnapshot = nil
             }
 
             let snapshot = Self.commandPaletteForkExecutionSnapshot(
                 indexSnapshot: index.snapshot(workspaceId: workspaceId, panelId: panelId),
                 fallbackSnapshot: currentContext.workspace.restoredAgentSnapshotsByPanelId[panelId],
-                cachedSnapshot: commandPaletteForkableAgentSnapshotsByPanelKey[panelKey]
+                cachedSnapshot: cachedSnapshot
             )
             guard let snapshot else {
                 commandPaletteForkableAgentSupportedPanelKeys.remove(panelKey)
                 commandPaletteForkableAgentSnapshotsByPanelKey.removeValue(forKey: panelKey)
                 commandPaletteForkableAgentSnapshotFingerprintsByPanelKey.removeValue(forKey: panelKey)
+                commandPaletteForkableAgentRemoteContextsByPanelKey.removeValue(forKey: panelKey)
+                commandPaletteForkableAgentTTYNamesByPanelKey.removeValue(forKey: panelKey)
                 NSSound.beep()
                 return
             }
@@ -71,10 +88,12 @@ extension ContentView {
                     expectedWorkspaceId: workspaceId,
                     expectedPanelId: panelId,
                     expectedIsRemoteContext: isRemoteContext,
+                    expectedTTYName: ttyName,
                     currentWorkspaceId: postProbeContext.workspace.id,
                     currentPanelId: postProbeContext.panelId,
                     currentPanelIsTerminal: postProbeContext.panel.panelType == .terminal,
-                    currentIsRemoteContext: postProbeContext.workspace.isRemoteTerminalSurface(panelId)
+                    currentIsRemoteContext: postProbeContext.workspace.isRemoteTerminalSurface(panelId),
+                    currentTTYName: postProbeContext.workspace.surfaceTTYNames[panelId]
                   ) else {
                 NSSound.beep()
                 return
@@ -85,6 +104,7 @@ extension ContentView {
             commandPaletteForkableAgentSnapshotsByPanelKey[panelKey] = snapshot
             commandPaletteForkableAgentSnapshotFingerprintsByPanelKey[panelKey] = Self.commandPaletteForkSnapshotFingerprint(snapshot)
             commandPaletteForkableAgentRemoteContextsByPanelKey[panelKey] = isRemoteContext
+            commandPaletteForkableAgentTTYNamesByPanelKey[panelKey] = ttyCacheValue
 
             let didFork: Bool
             switch destination {
@@ -144,15 +164,18 @@ extension ContentView {
         expectedWorkspaceId: UUID,
         expectedPanelId: UUID,
         expectedIsRemoteContext: Bool,
+        expectedTTYName: String?,
         currentWorkspaceId: UUID,
         currentPanelId: UUID,
         currentPanelIsTerminal: Bool,
-        currentIsRemoteContext: Bool
+        currentIsRemoteContext: Bool,
+        currentTTYName: String?
     ) -> Bool {
         currentWorkspaceId == expectedWorkspaceId
             && currentPanelId == expectedPanelId
             && currentPanelIsTerminal
             && currentIsRemoteContext == expectedIsRemoteContext
+            && commandPaletteNormalizedTTYName(currentTTYName) == commandPaletteNormalizedTTYName(expectedTTYName)
     }
 }
 
