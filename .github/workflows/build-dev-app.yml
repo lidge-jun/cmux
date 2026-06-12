@@ -1,0 +1,70 @@
+name: Build dev app (unsigned, fork only)
+
+# Fork-only workflow: builds an unsigned arm64 Release cmux.app from this
+# branch and uploads it as an artifact. Mirrors the build portion of
+# nightly.yml without signing/notarization/Sparkle/dmg steps.
+on:
+  push:
+    branches: [jun-build]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Select Xcode
+        run: ./scripts/select-nightly-xcodes.sh
+
+      - name: Install build deps
+        run: |
+          ./scripts/install-rust-ci.sh
+          ./scripts/install-zig-ci.sh
+
+      - name: Download pre-built GhosttyKit.xcframework
+        run: ./scripts/download-prebuilt-ghosttykit.sh
+
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: .spm-cache
+          key: spm-${{ hashFiles('cmux.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: spm-
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: daemon/remote/go.mod
+          cache-dependency-path: daemon/remote/go.sum
+
+      - name: Build app (Release, arm64, unsigned)
+        run: |
+          set -euo pipefail
+          xcodebuild -scheme cmux -configuration Release -derivedDataPath build-dev \
+            -destination 'generic/platform=macOS' \
+            -clonedSourcePackagesDirPath .spm-cache \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO build
+
+      - name: Ad-hoc sign
+        run: |
+          set -euo pipefail
+          APP="build-dev/Build/Products/Release/cmux.app"
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --deep "$APP"
+
+      - name: Zip app
+        run: ditto -c -k --keepParent "build-dev/Build/Products/Release/cmux.app" cmux-dev.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cmux-dev-app
+          path: cmux-dev.zip
+          retention-days: 7
