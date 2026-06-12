@@ -43,6 +43,13 @@ jobs:
           cache-dependency-path: daemon/remote/go.sum
 
       - name: Build app (Release, arm64, unsigned)
+        env:
+          # Hosted macos-26 images only carry Xcode 26.x; the in-Xcode zig
+          # helper build fails to link against the macOS 26 SDK (same reason
+          # nightly builds the helper separately on a pre-26 toolchain). CI
+          # skips it the same way. The ghostty CLI helper is injected from the
+          # installed release app at install time instead.
+          CMUX_SKIP_ZIG_BUILD: "1"
         run: |
           set -euo pipefail
           xcodebuild -scheme cmux -configuration Release -derivedDataPath build-dev \
